@@ -1,14 +1,13 @@
-import sharp from 'sharp';
-import { readFile } from 'fs/promises';
 import { PromptInfo, Generators } from './data';
 import { MetadataError, ParserError } from './exceptions';
 import { METADATA_EXTRACTORS, Eagerness, ExtractorFunction } from './extractors';
 import { Parser, MANAGED_PARSERS } from './parsers';
+import { detectImageFormat } from './imageUtils';
 
 /**
- * Input types that can be parsed
+ * Input types that can be parsed (browser-compatible)
  */
-export type ParseInput = string | Buffer | sharp.Sharp;
+export type ParseInput = Blob | ArrayBuffer | Uint8Array;
 
 /**
  * Provides a simple way of testing multiple parser modules against a given image
@@ -35,7 +34,7 @@ export class ParserManager {
     this.debug = debug;
 
     const parsersToUse = managedParsers || MANAGED_PARSERS;
-    this.managedParsers = parsersToUse.map(ParserClass => 
+    this.managedParsers = parsersToUse.map(ParserClass =>
       new ParserClass(normalizeParameters, debug)
     );
   }
@@ -48,30 +47,22 @@ export class ParserManager {
     eagerness?: Eagerness
   ): Promise<PromptInfo | null> {
     const targetEagerness = eagerness || this.eagerness;
-    
-    let image: sharp.Sharp;
-    
-    // Convert input to Sharp instance
-    if (typeof input === 'string') {
-      // File path
-      try {
-        const buffer = await readFile(input);
-        image = sharp(buffer);
-      } catch (error) {
-        throw new Error(`Failed to read image file: ${error}`);
-      }
-    } else if (Buffer.isBuffer(input)) {
-      // Buffer
-      image = sharp(input);
+
+    // Convert input to Uint8Array
+    let buffer: Uint8Array;
+
+    if (input instanceof Blob) {
+      const arrayBuffer = await input.arrayBuffer();
+      buffer = new Uint8Array(arrayBuffer);
+    } else if (input instanceof ArrayBuffer) {
+      buffer = new Uint8Array(input);
     } else {
-      // Already a Sharp instance
-      image = input;
+      buffer = input;
     }
 
-    // Get image metadata to determine format
-    const metadata = await image.metadata();
-    const format = metadata.format?.toUpperCase();
-    
+    // Detect image format from magic bytes
+    const format = detectImageFormat(buffer);
+
     if (!format) {
       if (this.debug) {
         console.log('Unknown image format');
@@ -102,8 +93,8 @@ export class ParserManager {
       for (const extractor of levelExtractors) {
         for (const parser of this.managedParsers) {
           try {
-            const parameters = await extractor(image, parser.generator);
-            
+            const parameters = await extractor(buffer, parser.generator);
+
             if (!parameters) {
               continue;
             }

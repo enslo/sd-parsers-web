@@ -1,13 +1,13 @@
-# SD-Parsers
+# SD-Parsers-Web
 
 
-Read structured metadata from images created with stable diffusion.
+Read structured metadata from images created with stable diffusion - **Browser Edition**.
 
-A TypeScript package for extracting prompt information and generation parameters for AI-generated images. You need images that are already embedded with generation data to use this library, it does not "predict" anything.
+A TypeScript package for extracting prompt information and generation parameters from AI-generated images in the browser. You need images that are already embedded with generation data to use this library, it does not "predict" anything.
 
 Website & API: https://sd-parsers.vercel.app/
 
-> **Note**: This is a TypeScript port of the original Python sd-parsers library, providing the same functionality with async/await support and TypeScript type safety.
+> **Note**: This is a browser-only fork of sd-parsers, designed specifically for use in web applications without Node.js dependencies.
 
 ![Example Output](example_output.png)
 
@@ -25,35 +25,25 @@ Supports reading metadata from images generated with:
 ## Installation
 
 ```bash
-npm install sd-parsers
+npm install sd-parsers-web
 ```
-
-## Command Line Usage
-
-You can use sd-parsers from the command line to quickly extract metadata from images:
-
-```bash
-npx sd-parsers image1.png image2.jpg
-```
-
-This will output the extracted metadata in JSON format for each image.
 
 ## Usage
 
 ### Basic usage:
 
-For a simple query, import `ParserManager` from `sd-parsers` and use its `parse()` method to parse an image.
+For a simple query, import `ParserManager` from `sd-parsers-web` and use its `parse()` method to parse an image.
 
-#### Read prompt information from a given filename with `parse()`:
+#### Read prompt information from a File object with `parse()`:
 
 ```typescript
-import { ParserManager } from 'sd-parsers';
+import { ParserManager } from 'sd-parsers-web';
 
 const parserManager = new ParserManager();
 
-async function main() {
-  const promptInfo = await parserManager.parse('image.png');
-
+async function handleFileInput(file: File) {
+  const promptInfo = await parserManager.parse(file);
+  
   if (promptInfo) {
     for (const prompt of promptInfo.prompts) {
       console.log(`Prompt: ${prompt.value}`);
@@ -62,17 +52,37 @@ async function main() {
 }
 ```
 
-#### Read prompt information from a Buffer:
+#### Read prompt information from an ArrayBuffer:
 
 ```typescript
-import { ParserManager } from 'sd-parsers';
-import { readFile } from 'fs/promises';
+import { ParserManager } from 'sd-parsers-web';
 
 const parserManager = new ParserManager();
 
-async function main() {
-  const imageBuffer = await readFile('image.png');
-  const promptInfo = await parserManager.parse(imageBuffer);
+async function handleDrop(event: DragEvent) {
+  const file = event.dataTransfer?.files[0];
+  if (file) {
+    const arrayBuffer = await file.arrayBuffer();
+    const promptInfo = await parserManager.parse(arrayBuffer);
+    
+    if (promptInfo) {
+      console.log(promptInfo);
+    }
+  }
+}
+```
+
+#### Parse a remote image:
+
+```typescript
+import { ParserManager } from 'sd-parsers-web';
+
+const parserManager = new ParserManager();
+
+async function parseRemoteImage(url: string) {
+  const response = await fetch(url);
+  const arrayBuffer = await response.arrayBuffer();
+  const promptInfo = await parserManager.parse(arrayBuffer);
   
   if (promptInfo) {
     console.log(promptInfo);
@@ -85,7 +95,7 @@ async function main() {
 #### Configure metadata extraction:
 
 ```typescript
-import { ParserManager, Eagerness } from 'sd-parsers';
+import { ParserManager, Eagerness } from 'sd-parsers-web';
 
 const parserManager = new ParserManager({ eagerness: Eagerness.EAGER });
 ```
@@ -96,10 +106,12 @@ const parserManager = new ParserManager({ eagerness: Eagerness.EAGER });
 - **DEFAULT**: try to ensure all metadata is read (default)
 - **EAGER**: include additional methods to try and retrieve metadata (computationally expensive!)
 
+> **Browser Version Note**: Due to browser environment constraints, FAST and EAGER modes have limited functionality. DEFAULT mode (the default setting) is recommended for best results in the browser version.
+
 #### Only use specific parser modules:
 
 ```typescript
-import { ParserManager, AUTOMATIC1111Parser } from 'sd-parsers';
+import { ParserManager, AUTOMATIC1111Parser } from 'sd-parsers-web';
 
 const parserManager = new ParserManager({
   managedParsers: [AUTOMATIC1111Parser]
@@ -109,7 +121,7 @@ const parserManager = new ParserManager({
 #### Debug mode:
 
 ```typescript
-import { ParserManager } from 'sd-parsers';
+import { ParserManager } from 'sd-parsers-web';
 
 const parserManager = new ParserManager({ debug: true });
 ```
@@ -130,7 +142,7 @@ interface PromptInfo {
 Access parsed data using helper functions:
 
 ```typescript
-import { getFullPrompt, getFullNegativePrompt, getModels } from 'sd-parsers';
+import { getFullPrompt, getFullNegativePrompt, getModels } from 'sd-parsers-web';
 
 const prompt = getFullPrompt(promptInfo);
 const negativePrompt = getFullNegativePrompt(promptInfo);
@@ -180,25 +192,30 @@ npm test
 npm run dev
 ```
 
-## Differences from Python Version
+## Differences from Original sd-parsers
 
-This TypeScript port has some differences from the original Python version:
+This browser-only fork has the following differences:
 
-1. **Image Processing**: Uses Sharp instead of PIL for image processing
-2. **Async/Await**: All parsing operations are asynchronous
-3. **Type Safety**: Full TypeScript type definitions
-4. **Limited Extractors**: Some advanced metadata extraction features are not yet implemented (PNG text chunks, advanced EXIF)
-5. **Module System**: Uses ES modules/CommonJS instead of Python imports
+1. **Designed for Browsers**: Optimized for browser environments; Node.js compatibility not tested or supported
+2. **Input Types**: Accepts `Blob | ArrayBuffer | Uint8Array` instead of file paths
+3. **No CLI**: Command-line interface removed
+4. **Image Processing**: Uses browser APIs instead of Sharp
+5. **EXIF Parsing**: Uses exifr library for JPEG EXIF data
+6. **Limited Eagerness Modes**: 
+   - FAST mode: PNG IHDR parsing not implemented (returns null)
+   - EAGER mode: Stenographic analysis not available in browsers
+   - DEFAULT mode: Fully functional (recommended)
 
 ## Contributing
 
-Contributions are welcome! This is a port of the Python sd-parsers library. If you find issues or want to add support for additional image generators, please open an issue or pull request.
+Contributions are welcome! This is a browser-focused fork of the original sd-parsers library. If you find issues or want to add support for additional image generators, please open an issue or pull request.
 
 ## License
 
-MIT License - same as the original Python version.
+MIT License - same as the original version.
 
 ## Credits
 
-- Original Python library: [sd-parsers](https://github.com/d3x-at/sd-parsers)
-- Image processing: [Sharp](https://sharp.pixelplumbing.com/)
+- Original library: [sd-parsers](https://github.com/d3x-at/sd-parsers) by d3x-at
+- TypeScript port: [sd-parsers](https://github.com/deepratna-awale/sd-parsers) by Deepratna Awale
+- Browser adaptation: Ernest Croft
