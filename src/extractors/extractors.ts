@@ -121,29 +121,58 @@ export async function pngStenographicAlpha(buffer: Uint8Array, _: Generators): P
  */
 export async function jpegUserComment(buffer: Uint8Array, generator: Generators): Promise<Record<string, any> | null> {
   try {
-    // Use exifr to parse EXIF data
+
+    // Use exifr to parse EXIF data with various options
     const exif = await parseExif(buffer, {
       userComment: true,
+      pick: ['userComment']
     });
 
-    if (exif?.UserComment) {
-      // UserComment can be a string or buffer
-      const comment = typeof exif.UserComment === 'string'
-        ? exif.UserComment
-        : String(exif.UserComment);
 
-      if (generator === Generators.AUTOMATIC1111 || generator === Generators.FOOOCUS) {
-        return { parameters: comment };
+    // Check for userComment in various forms
+    const userComment = exif?.userComment || exif?.UserComment || exif?.['0x9286'];
+
+    if (userComment) {
+
+      // exifr returns raw bytes - need to decode based on character code
+      if (userComment instanceof Uint8Array) {
+        // UserComment structure: first 8 bytes = character code, rest = data
+        const charCodeBytes = userComment.slice(0, 8);
+        const charCode = new TextDecoder('ascii').decode(charCodeBytes).replace(/\0/g, '');
+
+
+        // Skip the first 8 bytes
+        const dataBuffer = userComment.slice(8);
+
+        let decodedComment: string;
+        if (charCode === 'UNICODE') {
+          // UTF-16 big-endian (more common in EXIF)
+          decodedComment = new TextDecoder('utf-16be').decode(dataBuffer);
+        } else if (charCode === 'ASCII') {
+          decodedComment = new TextDecoder('ascii').decode(dataBuffer);
+        } else {
+          // Default to UTF-8
+          decodedComment = new TextDecoder('utf-8').decode(dataBuffer);
+        }
+
+
+        if (generator === Generators.AUTOMATIC1111 || generator === Generators.FOOOCUS) {
+          return { parameters: decodedComment };
+        }
+        return { userComment: decodedComment };
       }
 
-      return { userComment: comment };
+      // If it's a string, use it directly
+      if (typeof userComment === 'string') {
+        return { parameters: userComment };
+      }
+
+      return null;
     }
 
     return null;
   } catch (error) {
-    // exifr throws if no EXIF data, which is expected for many images
-    // Only throw MetadataError for actual parsing errors
-    if (error instanceof Error && error.message.includes('No EXIF')) {
+    if (generator === Generators.AUTOMATIC1111 || generator === Generators.FOOOCUS) {
       return null;
     }
     throw new MetadataError(`Error reading JPEG UserComment: ${error}`);

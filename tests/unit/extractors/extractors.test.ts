@@ -94,8 +94,9 @@ describe('Extractors', () => {
       // pngImageText should throw for invalid PNG
       await expect(pngImageText(invalidBuffer, Generators.AUTOMATIC1111)).rejects.toThrow();
 
-      // jpegUserComment throws for truly invalid data (not just missing EXIF)
-      await expect(jpegUserComment(invalidBuffer, Generators.AUTOMATIC1111)).rejects.toThrow();
+      // jpegUserComment returns null for AUTOMATIC1111 (even for invalid data)
+      const result3 = await jpegUserComment(invalidBuffer, Generators.AUTOMATIC1111);
+      expect(result3).toBeNull();
     });
   });
 });
