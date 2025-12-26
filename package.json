@@ -1,5 +1,5 @@
 {
-  "name": "sd-parsers-web",
+  "name": "@enslo/sd-parsers-web",
   "version": "1.0.0",
   "description": "Browser-only library to read metadata from Stable Diffusion images",
   "type": "module",
@@ -57,6 +57,6 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/enslo/sd-parsers-web.git"
+    "url": "git+https://github.com/enslo/sd-parsers-web.git"
   }
 }
