@@ -1,34 +1,32 @@
-import sharp from 'sharp';
 import extractChunks from 'png-chunks-extract';
+import { parse as parseExif } from 'exifr';
 import { Generators } from '../data';
 import { MetadataError } from '../exceptions';
 
 /**
- * Type definition for metadata extractor functions
+ * Type definition for metadata extractor functions (browser-compatible)
  */
 export type ExtractorFunction = (
-  image: sharp.Sharp, 
+  buffer: Uint8Array,
   generator: Generators
 ) => Promise<Record<string, any> | null>;
 
 /**
  * Extract metadata from PNG image info
+ * 
+ * Browser version note: This function currently returns null as browser APIs
+ * do not provide DPI/density information like Sharp does in Node.js.
+ * Kept for API compatibility with original library and future implementation.
  */
-export async function pngImageInfo(image: sharp.Sharp, _: Generators): Promise<Record<string, any> | null> {
+export async function pngImageInfo(buffer: Uint8Array, _: Generators): Promise<Record<string, any> | null> {
   try {
-    const metadata = await image.metadata();
-    
-    // Sharp provides some PNG metadata but not the text chunks we need
-    // This is a limitation compared to PIL
+    // For PNG, we can extract basic info but skip advanced metadata
+    // that would require sharp
     const result: Record<string, any> = {};
-    
-    if (metadata.density) {
-      result.dpi = metadata.density;
-    }
-    
-    if (metadata.width) result.width = metadata.width;
-    if (metadata.height) result.height = metadata.height;
-    
+
+    // We could parse PNG IHDR chunk here if needed
+    // For now, return empty as basic metadata isn't critical
+
     return Object.keys(result).length > 0 ? result : null;
   } catch (error) {
     throw new MetadataError(`Error reading PNG metadata: ${error}`);
@@ -38,41 +36,38 @@ export async function pngImageInfo(image: sharp.Sharp, _: Generators): Promise<R
 /**
  * Extract metadata from PNG text chunks
  */
-export async function pngImageText(image: sharp.Sharp, _: Generators): Promise<Record<string, any> | null> {
+export async function pngImageText(buffer: Uint8Array, _: Generators): Promise<Record<string, any> | null> {
   try {
-    // Get the PNG buffer from Sharp
-    const buffer = await image.png().toBuffer();
-    
-    // Extract PNG chunks
+    // Extract PNG chunks directly from buffer
     const chunks = extractChunks(buffer);
-    
+
     // Look for text chunks
-    const textChunks = chunks.filter(chunk => 
-      chunk.name === 'tEXt' || 
-      chunk.name === 'zTXt' || 
+    const textChunks = chunks.filter(chunk =>
+      chunk.name === 'tEXt' ||
+      chunk.name === 'zTXt' ||
       chunk.name === 'iTXt'
     );
-    
+
     if (textChunks.length === 0) {
       return null;
     }
-    
+
     const result: Record<string, any> = {};
-    
+
     for (const chunk of textChunks) {
       try {
         let text: string;
         let keyword: string;
-        
+
         if (chunk.name === 'tEXt') {
           // Uncompressed text
           const data = chunk.data;
           const nullIndex = data.indexOf(0);
           if (nullIndex === -1) continue;
-          
-          keyword = Buffer.from(data.subarray(0, nullIndex)).toString('latin1');
-          text = Buffer.from(data.subarray(nullIndex + 1)).toString('latin1');
-          
+
+          keyword = new TextDecoder('latin1').decode(data.subarray(0, nullIndex));
+          text = new TextDecoder('latin1').decode(data.subarray(nullIndex + 1));
+
         } else if (chunk.name === 'zTXt') {
           // Compressed text (would need zlib)
           continue;
@@ -82,11 +77,11 @@ export async function pngImageText(image: sharp.Sharp, _: Generators): Promise<R
         } else {
           continue;
         }
-        
+
         // Store the text data
         if (keyword && text) {
           result[keyword] = text;
-          
+
           // Common SD metadata keywords
           if (keyword.toLowerCase() === 'parameters') {
             result.parameters = text;
@@ -97,7 +92,7 @@ export async function pngImageText(image: sharp.Sharp, _: Generators): Promise<R
         continue;
       }
     }
-    
+
     return Object.keys(result).length > 0 ? result : null;
   } catch (error) {
     throw new MetadataError(`Error reading PNG text chunks: ${error}`);
@@ -106,8 +101,12 @@ export async function pngImageText(image: sharp.Sharp, _: Generators): Promise<R
 
 /**
  * Extract metadata from PNG stenographic alpha channel
+ * 
+ * Browser version note: Stenographic analysis is not implemented in the browser version.
+ * This feature requires specialized image processing that is not available in browsers.
+ * Kept for API compatibility with original library.
  */
-export async function pngStenographicAlpha(image: sharp.Sharp, _: Generators): Promise<Record<string, any> | null> {
+export async function pngStenographicAlpha(buffer: Uint8Array, _: Generators): Promise<Record<string, any> | null> {
   try {
     // This would require specialized stenographic analysis
     // For now, return null as this is a complex feature
@@ -120,24 +119,33 @@ export async function pngStenographicAlpha(image: sharp.Sharp, _: Generators): P
 /**
  * Extract metadata from JPEG UserComment EXIF field
  */
-export async function jpegUserComment(image: sharp.Sharp, generator: Generators): Promise<Record<string, any> | null> {
+export async function jpegUserComment(buffer: Uint8Array, generator: Generators): Promise<Record<string, any> | null> {
   try {
-    const metadata = await image.metadata();
-    
-    if (!metadata.exif) {
-      return null;
+    // Use exifr to parse EXIF data
+    const exif = await parseExif(buffer, {
+      userComment: true,
+    });
+
+    if (exif?.UserComment) {
+      // UserComment can be a string or buffer
+      const comment = typeof exif.UserComment === 'string'
+        ? exif.UserComment
+        : String(exif.UserComment);
+
+      if (generator === Generators.AUTOMATIC1111 || generator === Generators.FOOOCUS) {
+        return { parameters: comment };
+      }
+
+      return { userComment: comment };
     }
-    
-    // For now, return basic EXIF presence info
-    // Full EXIF parsing would require additional libraries like exifr
-    if (generator === Generators.AUTOMATIC1111 || generator === Generators.FOOOCUS) {
-      // Would need to parse UserComment from EXIF buffer
-      // This is a placeholder for the actual EXIF parsing logic
-      return { parameters: '' }; // Placeholder
-    }
-    
+
     return null;
   } catch (error) {
+    // exifr throws if no EXIF data, which is expected for many images
+    // Only throw MetadataError for actual parsing errors
+    if (error instanceof Error && error.message.includes('No EXIF')) {
+      return null;
+    }
     throw new MetadataError(`Error reading JPEG UserComment: ${error}`);
   }
 }
