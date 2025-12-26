@@ -13,7 +13,7 @@ describe('ParserManager', () => {
         eagerness: Eagerness.EAGER,
         normalizeParameters: false
       });
-      
+
       expect(customManager).toBeInstanceOf(ParserManager);
     });
 
@@ -21,7 +21,7 @@ describe('ParserManager', () => {
       const customManager = new ParserManager({
         managedParsers: []
       });
-      
+
       expect(customManager).toBeInstanceOf(ParserManager);
     });
   });
@@ -34,26 +34,32 @@ describe('ParserManager', () => {
     });
 
     it('should handle invalid image data gracefully', async () => {
-      try {
-        const result = await parserManager.parse(Buffer.from('invalid image data'));
-        expect(result).toBeNull();
-      } catch (error) {
-        // Sharp throws an error for invalid image data, which is expected
-        expect(error).toBeDefined();
-      }
+      const result = await parserManager.parse(new Uint8Array([1, 2, 3, 4]));
+      expect(result).toBeNull();
     });
 
     it('should handle empty buffer', async () => {
-      try {
-        const result = await parserManager.parse(Buffer.alloc(0));
-        expect(result).toBeNull();
-      } catch (error) {
-        expect(error).toBeDefined();
-      }
+      const result = await parserManager.parse(new Uint8Array(0));
+      expect(result).toBeNull();
     });
 
-    it('should handle non-existent file path', async () => {
-      await expect(parserManager.parse('/non/existent/file.png')).rejects.toThrow();
+    it('should accept Uint8Array input', async () => {
+      const buffer = new Uint8Array([0x89, 0x50, 0x4e, 0x47]); // PNG signature
+      const result = await parserManager.parse(buffer);
+      // Result will be null as this is not a complete PNG, but it should not throw
+      expect(result).toBeNull();
+    });
+
+    it('should accept ArrayBuffer input', async () => {
+      const arrayBuffer = new ArrayBuffer(4);
+      const result = await parserManager.parse(arrayBuffer);
+      expect(result).toBeNull();
+    });
+
+    it('should accept Blob input', async () => {
+      const blob = new Blob([new Uint8Array([1, 2, 3, 4])]);
+      const result = await parserManager.parse(blob);
+      expect(result).toBeNull();
     });
   });
 

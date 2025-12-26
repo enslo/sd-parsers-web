@@ -37,7 +37,10 @@ export async function getImageMetadata(buffer: Uint8Array): Promise<{
     format?: string;
 }> {
     return new Promise((resolve, reject) => {
-        const blob = new Blob([buffer.buffer]);
+        // Type assertion is safe: Uint8Array is a valid BlobPart (ArrayBufferView).
+        // TypeScript's type checker is overly strict here due to ArrayBufferLike
+        // (which includes SharedArrayBuffer), but in practice buffer is always ArrayBuffer.
+        const blob = new Blob([buffer as BlobPart]);
         const url = URL.createObjectURL(blob);
         const img = new Image();
 
